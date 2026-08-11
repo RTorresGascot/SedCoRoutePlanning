@@ -283,19 +283,24 @@ def write_route_to_sheets(sheet_name: str, scheduled_route: list, depart_minute:
 
     existing_rows = api_retry(lambda: worksheet.get_all_values())
     is_empty = len(existing_rows) == 0
-    headers = ["Type", "Projected ETA", "Invoices", "Customer", "Boxes", "Total Boxes"]
+
+    midnight_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    depart_time_str = (midnight_today + timedelta(minutes=depart_minute)).strftime("%I:%M %p")
+
+    headers = ["Type", "Projected ETA", "Invoices", "Customer", "Boxes", "Total Boxes", "route start"]
 
     if is_empty:
-        table_data = [headers]
         header_row_idx = 1
         current_row = 2
+        table_data = [headers]
     else:
-        table_data = [["", "", "", "", "", ""], ["", "", "", "", "", ""], headers]
         header_row_idx = len(existing_rows) + 3
         current_row = header_row_idx + 1
+        table_data = [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], headers]
 
+    time_row_idx = current_row
     data_row_indices = []
-    midnight_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    grand_total_boxes = 0
 
     for rank, (order, arrival_minute) in enumerate(scheduled_route, start=1):
         tw = getattr(order, "time_window", getattr(order, "timewindow", (0, 1440)))
@@ -304,49 +309,89 @@ def write_route_to_sheets(sheet_name: str, scheduled_route: list, depart_minute:
         eta_time_str = (midnight_today + timedelta(minutes=arrival_minute)).strftime("%I:%M %p")
         customer_name = order.customer
         total_boxes_sum = order.boxes
+        grand_total_boxes += total_boxes_sum
 
         if isinstance(order.order_id, list) and hasattr(order, "box_list"):
             total_invoices = len(order.order_id)
             for idx, (inv_id, ind_boxes) in enumerate(zip(order.order_id, order.box_list)):
                 total_boxes_display = f"{total_boxes_sum} BOXES" if (idx == total_invoices - 1) else ""
+                col_g_val = depart_time_str if current_row == time_row_idx else ""
+                
                 table_data.append([
                     delivery_type,
                     eta_time_str,
                     str(inv_id),
                     customer_name,
                     ind_boxes,
-                    total_boxes_display
+                    total_boxes_display,
+                    col_g_val
                 ])
                 data_row_indices.append(current_row)
                 current_row += 1
         else:
+            col_g_val = depart_time_str if current_row == time_row_idx else ""
             table_data.append([
                 delivery_type,
                 eta_time_str,
                 str(order.order_id),
                 customer_name,
                 order.boxes,
-                f"{total_boxes_sum} BOXES"
+                f"{total_boxes_sum} BOXES",
+                col_g_val
             ])
             data_row_indices.append(current_row)
             current_row += 1
 
         if rank < len(scheduled_route):
-            table_data.append(["", "", "", "", "", ""])
+            table_data.append(["", "", "", "", "", "", ""])
             current_row += 1
+
+    # Append bottom summary row for total box count
+    total_summary_row = current_row
+    table_data.append(["", "", "", "", "TOTAL BOXES:", f"{grand_total_boxes} BOXES", ""])
 
     append_start_row = 1 if is_empty else len(existing_rows) + 1
     total_rows = append_start_row + len(table_data) - 1
 
     api_retry(lambda: worksheet.update(values=table_data, range_name=f"A{append_start_row}"))
 
+    # Borders Setup
     std_border = Border(style="SOLID", color=Color(0, 0, 0))
     thick_border = Border(style="SOLID_THICK", color=Color(0, 0, 0))
     inner_grid = Borders(top=std_border, bottom=std_border, left=std_border, right=std_border)
 
-    header_format = CellFormat(backgroundColor=Color(1, 1, 0), textFormat=TextFormat(bold=True), borders=inner_grid)
-    api_retry(lambda: format_cell_range(worksheet, f"A{header_row_idx}:F{header_row_idx}", header_format))
+    # 1. Yellow formatting for Headers (Columns A through F)
+    yellow_header_format = CellFormat(
+        backgroundColor=Color(1, 1, 0),
+        textFormat=TextFormat(bold=True),
+        borders=inner_grid
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"A{header_row_idx}:F{header_row_idx}", yellow_header_format))
 
+    # 2. Format Column G: "route start" text cell and departure time cell below it
+    g_text_format = CellFormat(
+        textFormat=TextFormat(bold=True),
+        borders=Borders(bottom=std_border)
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"G{header_row_idx}", g_text_format))
+
+    g_time_format = CellFormat(
+        textFormat=TextFormat(bold=True)
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"G{time_row_idx}", g_time_format))
+
+    # 3. Apply thick outer border box enclosing G{header_row_idx} and G{time_row_idx} together
+    thick_box = CellFormat(
+        borders=Borders(
+            top=thick_border,
+            bottom=thick_border,
+            left=thick_border,
+            right=thick_border
+        )
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"G{header_row_idx}:G{time_row_idx}", thick_box))
+
+    # 4. Format order data rows
     if data_row_indices:
         min_row, max_row = min(data_row_indices), max(data_row_indices)
         order_format = CellFormat(backgroundColor=Color(0.88, 0.88, 0.88), textFormat=TextFormat(bold=True), borders=inner_grid)
@@ -355,15 +400,34 @@ def write_route_to_sheets(sheet_name: str, scheduled_route: list, depart_minute:
         api_retry(lambda: format_cell_range(worksheet, f"A{min_row}:E{max_row}", order_format))
         api_retry(lambda: format_cell_range(worksheet, f"F{min_row}:F{max_row}", total_format))
 
-    api_retry(lambda: format_cell_range(worksheet, f"A{header_row_idx}:F{header_row_idx}", CellFormat(borders=Borders(top=thick_border))))
-    api_retry(lambda: format_cell_range(worksheet, f"A{total_rows}:F{total_rows}", CellFormat(borders=Borders(bottom=thick_border))))
+    # 5. Format Bottom Grand Total Row (Red Text & Thick Border Outline around F)
+    grand_total_label_format = CellFormat(
+        textFormat=TextFormat(bold=True)
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"E{total_summary_row}", grand_total_label_format))
 
+    grand_total_box_format = CellFormat(
+        textFormat=TextFormat(bold=True, foregroundColor=Color(0.8, 0, 0)),
+        borders=Borders(
+            top=thick_border,
+            bottom=thick_border,
+            left=thick_border,
+            right=thick_border
+        )
+    )
+    api_retry(lambda: format_cell_range(worksheet, f"F{total_summary_row}", grand_total_box_format))
+
+    # Table top bounding border
+    api_retry(lambda: format_cell_range(worksheet, f"A{header_row_idx}:F{header_row_idx}", CellFormat(borders=Borders(top=thick_border))))
+
+    # Column Widths
     api_retry(lambda: set_column_width(worksheet, "A", 110))
     api_retry(lambda: set_column_width(worksheet, "B", 130))
     api_retry(lambda: set_column_width(worksheet, "C", 110))
     api_retry(lambda: set_column_width(worksheet, "D", 450))
-    api_retry(lambda: set_column_width(worksheet, "E", 90))
+    api_retry(lambda: set_column_width(worksheet, "E", 110))
     api_retry(lambda: set_column_width(worksheet, "F", 130))
+    api_retry(lambda: set_column_width(worksheet, "G", 140))
 
     print(f"Successfully appended route with ETA column to '{target_tab_name}' at row {header_row_idx}.")
     time.sleep(2.5)
