@@ -3,7 +3,7 @@ import os
 import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Redirect stdout/stderr to print directly into the Tkinter Text box
 class TextRedirector:
