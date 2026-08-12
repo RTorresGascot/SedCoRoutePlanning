@@ -103,10 +103,10 @@ def load_orders_from_sheets(sheet_name: str, tab_name: str = "Orders", creds_fil
     """
     Loads orders, max box capacity, shift windows, and targeted route date from Google Sheets.
     Control Cells in Google Sheets:
-      - J2: Max Box Capacity (e.g. 50)
-      - J4: Min Start Time / Earliest Departure (e.g. 06:00)
-      - J5: Max End Time / Latest Return (e.g. 17:00)
-      - J6: Route Target Date (e.g. 8/11/2026)
+      - L3: Max Box Capacity (e.g. 50)
+      - L4: Min Start Time / Earliest Departure (e.g. 06:00)
+      - L5: Max End Time / Latest Return (e.g. 17:00)
+      - L6: Route Target Date (e.g. 8/11/2026)
     """
     if not os.path.exists(creds_file):
         raise FileNotFoundError(f"Credentials file '{creds_file}' not found.")
@@ -120,22 +120,22 @@ def load_orders_from_sheets(sheet_name: str, tab_name: str = "Orders", creds_fil
         print(f"Warning: Tab '{tab_name}' not found in '{sheet_name}'. Falling back to the first sheet.")
         sheet = spreadsheet.sheet1
 
-    # 1. Fetch Control Parameters (J2, J4, J5)
+    # 1. Fetch Control Parameters (L3, L4, L5)
     try:
-        raw_boxmax = api_retry(lambda: sheet.acell("J2").value)
+        raw_boxmax = api_retry(lambda: sheet.acell("L3").value)
         boxmax = int(raw_boxmax) if raw_boxmax else 50
     except (ValueError, TypeError):
         boxmax = 50
 
-    raw_min_start = api_retry(lambda: sheet.acell("J4").value)
+    raw_min_start = api_retry(lambda: sheet.acell("L4").value)
     min_start_minutes = convertStringToTime(raw_min_start) if raw_min_start else 360
 
-    raw_max_end = api_retry(lambda: sheet.acell("J5").value)
+    raw_max_end = api_retry(lambda: sheet.acell("L5").value)
     max_end_minutes = convertStringToTime(raw_max_end) if raw_max_end else 1020
 
-    # 2. Fetch Route Target Date from Cell J6
-    raw_target_date = api_retry(lambda: sheet.acell("J6").value)
-    
+    # 2. Fetch Route Target Date from Cell L6
+    raw_target_date = api_retry(lambda: sheet.acell("L6").value)
+
     if run_date is None:
         run_date = convertStringToDate(raw_target_date)
 
