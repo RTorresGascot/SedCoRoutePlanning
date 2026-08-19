@@ -4,6 +4,7 @@ import webbrowser
 from collections import defaultdict
 from datetime import datetime, timedelta
 from urllib import request
+from collections import defaultdict
 
 import folium
 import polyline
@@ -40,7 +41,7 @@ def run_optimization(tab_name="Orders"):
     origin_coords = (18.411141480447743, -66.194513270137)  # Depot location
     midnight_run_date = run_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # --- STEP 1: CONSOLIDATE ACTIVE ORDERS BY CUSTOMER / LOCATION ---
+    # Step 1: Consolidate active orders
     grouped = defaultdict(lambda: {
         "boxes": 0, 
         "box_list": [], 
@@ -48,20 +49,22 @@ def run_optimization(tab_name="Orders"):
         "time_window": (0, 1440), 
         "lat": 0.0, 
         "lng": 0.0, 
-        "name": ""
+        "name": "", 
+        "city": "", 
+        "bin": ""
     })
 
     for o in orderList:
         key = (o.customer, o.latitude, o.longitude)
         tw = getattr(o, "time_window", getattr(o, "timewindow", (0, 1440)))
-        
         grouped[key]["name"] = o.customer
+        grouped[key]["city"] = getattr(o, "city", "")
+        grouped[key]["bin"] = getattr(o, "bin_location", "")
         grouped[key]["lat"] = o.latitude
         grouped[key]["lng"] = o.longitude
         grouped[key]["boxes"] += o.boxes
         grouped[key]["box_list"].append(o.boxes)
         grouped[key]["ids"].append(o.order_id)
-        
         grouped[key]["time_window"] = (
             max(grouped[key]["time_window"][0], tw[0]),
             min(grouped[key]["time_window"][1], tw[1])
@@ -75,7 +78,9 @@ def run_optimization(tab_name="Orders"):
             boxes=data["boxes"],
             latitude=data["lat"],
             longitude=data["lng"],
-            timewindow=data["time_window"]
+            timewindow=data["time_window"],
+            city=data["city"],
+            bin_location=data["bin"]
         )
         order_obj.box_list = data["box_list"]
         consolidated_orders.append(order_obj)

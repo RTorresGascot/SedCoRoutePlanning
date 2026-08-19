@@ -31,7 +31,7 @@ def run_routing_script(tab_name, log_box, run_btn):
         import webbrowser
         import folium
         from determineRoute import fetch_osrm_road_geometry
-
+        from collections import defaultdict
         SHEET_NAME = "routetestdata"
         
         # Step 0: Load data
@@ -43,13 +43,24 @@ def run_routing_script(tab_name, log_box, run_btn):
         midnight_run_date = run_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Step 1: Consolidate orders
-        from collections import defaultdict
-        grouped = defaultdict(lambda: {"boxes": 0, "box_list": [], "ids": [], "time_window": (0, 1440), "lat": 0.0, "lng": 0.0, "name": ""})
+        grouped = defaultdict(lambda: {
+            "boxes": 0, 
+            "box_list": [], 
+            "ids": [], 
+            "time_window": (0, 1440), 
+            "lat": 0.0, 
+            "lng": 0.0, 
+            "name": "", 
+            "city": "", 
+            "bin": ""
+        })
 
         for o in orderList:
             key = (o.customer, o.latitude, o.longitude)
             tw = getattr(o, "time_window", getattr(o, "timewindow", (0, 1440)))
             grouped[key]["name"] = o.customer
+            grouped[key]["city"] = getattr(o, "city", "")
+            grouped[key]["bin"] = getattr(o, "bin_location", "")
             grouped[key]["lat"] = o.latitude
             grouped[key]["lng"] = o.longitude
             grouped[key]["boxes"] += o.boxes
@@ -63,8 +74,14 @@ def run_routing_script(tab_name, log_box, run_btn):
         consolidated_orders = []
         for key, data in grouped.items():
             order_obj = Order.create(
-                order_id=data["ids"], customer=data["name"], boxes=data["boxes"],
-                latitude=data["lat"], longitude=data["lng"], timewindow=data["time_window"]
+                order_id=data["ids"],
+                customer=data["name"],
+                boxes=data["boxes"],
+                latitude=data["lat"],
+                longitude=data["lng"],
+                timewindow=data["time_window"],
+                city=data["city"],
+                bin_location=data["bin"]
             )
             order_obj.box_list = data["box_list"]
             consolidated_orders.append(order_obj)
